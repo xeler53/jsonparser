@@ -1,0 +1,15 @@
+# Compiled files
+*.o
+*.a
+*.so
+*.dll
+*.exe
+
+# Build directories
+
+Build/
+
+# IDE specific files
+.vscode/
+.idea/
+*.make

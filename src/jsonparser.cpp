@@ -85,15 +85,6 @@ JsonValue::operator const std::string&() const
   return s_emptyString;
 }
 
-JsonValue::operator double() const
-{
-  if(m_type == JsonValueType::Number)
-  {
-    return std::get<double>(m_value);
-  }
-  return 0;
-}
-
 bool JsonValue::contains(const char* fieldName)
 {
   if(m_type == JsonValueType::Object)
@@ -222,15 +213,6 @@ double JsonParser::parseNumber()
     double frac = 0.1;
     while(isDigit(peek()))
     {
-JsonValue::operator double() const
-{
-  if(m_type == JsonValueType::Number)
-  {
-    return std::get<double>(m_value);
-  }
-  return 0;
-}
-
       result = result + frac * (peek() - '0');
       frac = frac * 0.1;
       m_position += 1;

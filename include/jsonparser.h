@@ -30,6 +30,7 @@ public:
   JsonValue& operator[](const char* fieldName);
   JsonValue& operator[](int index);
 
+  operator int() const;
   operator double() const;
   operator bool() const;
   operator const std::string&() const;

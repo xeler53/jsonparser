@@ -1,7 +1,9 @@
 #include "jsonparser.h"
 
+#include <cmath>
 #include <sstream>
 #include <stdio.h>
+#include <math.h>
 
 static JsonValue s_emptyObject = {};
 static std::string s_emptyString = "null";
@@ -47,6 +49,15 @@ JsonValue& JsonValue::operator[](int index)
   return s_emptyObject;
 }
 
+JsonValue::operator int() const
+{
+  if(m_type == JsonValueType::Number)
+  {
+    return (int) std::get<double>(m_value);
+  }
+  return 0;
+}
+
 JsonValue::operator double() const
 {
   if(m_type == JsonValueType::Number)
@@ -72,6 +83,15 @@ JsonValue::operator const std::string&() const
     return std::get<std::string>(m_value);
   }
   return s_emptyString;
+}
+
+JsonValue::operator double() const
+{
+  if(m_type == JsonValueType::Number)
+  {
+    return std::get<double>(m_value);
+  }
+  return 0;
 }
 
 bool JsonValue::contains(const char* fieldName)
@@ -202,12 +222,40 @@ double JsonParser::parseNumber()
     double frac = 0.1;
     while(isDigit(peek()))
     {
+JsonValue::operator double() const
+{
+  if(m_type == JsonValueType::Number)
+  {
+    return std::get<double>(m_value);
+  }
+  return 0;
+}
+
       result = result + frac * (peek() - '0');
       frac = frac * 0.1;
       m_position += 1;
     }
   }
-  
+  if(peek() == 'e' || peek() == 'E')
+  {
+    m_position += 1;
+
+    bool negExp = peek() == '-';
+    if(peek() == '+' || peek() == '-')
+      m_position += 1;
+    
+    double exponent = 0.0;
+    while(isDigit(peek()))
+    {
+      exponent = exponent * 10 + (peek() - '0');
+      m_position += 1;
+    }
+    
+    if(negExp)
+      exponent = -exponent;
+
+    result = result * std::pow(10, exponent);
+  }
   if(negative)
     result = -result;
 

@@ -7,7 +7,7 @@ This library is simplistic as posible
 Parsing file:
 
     JsonParser parser;
-    JsonValue* val = parser.parse(text, strlen(text));
+    JsonValue json = parser.parse(text, strlen(text));
 
 Error checking:
     
@@ -18,7 +18,6 @@ Error checking:
 
 Getting variables:
     
-    JsonValue& json = *val;
     std::string desc = json["Description"];
     double height = json["Height"]; 
 

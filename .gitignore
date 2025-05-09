@@ -11,5 +11,8 @@ Build/
 
 # IDE specific files
 .vscode/
+.vs/
+*.sln
+*.vcxproj
 .idea/
 *.make

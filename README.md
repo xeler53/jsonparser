@@ -29,6 +29,7 @@ Checking if json object has specific field:
 Getting size of json array:
     
     uint32_t arraySize = json["Array"].size();
-
+# > [!WARNING]
+* Escape characters are not implemented 
 # Compilation
 This project uses premake

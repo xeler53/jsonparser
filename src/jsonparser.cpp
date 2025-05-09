@@ -10,16 +10,31 @@ static std::string s_emptyString = "null";
 
 JsonValue::JsonValue()
 {
-  m_type == JsonValueType::Null;
+  m_type = JsonValueType::Null;
 }
+
+JsonValue::JsonValue(JsonValue&& other)
+{
+  m_type = other.m_type;
+  other.m_type = JsonValueType::Null;
+
+  m_number = other.m_number;
+}
+
+JsonValue::JsonValue(const JsonValue& other)
+{
+  m_type = other.m_type;
+  //TODO: finalize 
+}
+
 
 JsonValue& JsonValue::operator[](const std::string& fieldName) 
 {
   if(m_type == JsonValueType::Object)
   {
-    auto& map = std::get<JsonObject>(m_value);
+    auto& map = *m_object; 
     if(map.find(fieldName) != map.end())
-      return *map[fieldName];
+      return map[fieldName];
     else 
       return s_emptyObject;  
   }
@@ -31,9 +46,9 @@ JsonValue& JsonValue::operator[](const char* fieldName)
 {
   if(m_type == JsonValueType::Object)
   {
-    auto& map = std::get<JsonObject>(m_value);
+    auto& map = *m_object;
     if(map.find(fieldName) != map.end())
-      return *map[fieldName];
+      return map[fieldName];
     else 
       return s_emptyObject;  
   }
@@ -44,7 +59,7 @@ JsonValue& JsonValue::operator[](int index)
 {
   if(m_type == JsonValueType::Array)
   {
-    return *std::get<JsonArray>(m_value)[index];
+    return m_array->at(index);
   }
   return s_emptyObject;
 }
@@ -53,7 +68,7 @@ JsonValue::operator int() const
 {
   if(m_type == JsonValueType::Number)
   {
-    return (int) std::get<double>(m_value);
+    return (int) m_number;
   }
   return 0;
 }
@@ -62,7 +77,7 @@ JsonValue::operator double() const
 {
   if(m_type == JsonValueType::Number)
   {
-    return std::get<double>(m_value);
+    return m_number;
   }
   return 0;
 }
@@ -71,7 +86,7 @@ JsonValue::operator bool() const
 {
   if(m_type == JsonValueType::Boolean)
   {
-    return std::get<bool>(m_value);
+    return m_boolean;
   }
   return false;
 }
@@ -80,7 +95,7 @@ JsonValue::operator const std::string&() const
 {
   if(m_type == JsonValueType::String)
   {
-    return std::get<std::string>(m_value);
+    return *m_text;
   }
   return s_emptyString;
 }
@@ -90,7 +105,7 @@ bool JsonValue::contains(const char* fieldName)
   if(m_type == JsonValueType::Object)
   {
 
-    auto& map = std::get<JsonObject>(m_value);
+    auto& map = *m_object;
     return map.find(fieldName) != map.end();
   }
   return false;
@@ -101,7 +116,7 @@ bool JsonValue::contains(const std::string& fieldName)
   if(m_type == JsonValueType::Object)
   {
 
-    auto& map = std::get<JsonObject>(m_value);
+      auto& map = *m_object;
     return map.find(fieldName) != map.end();
   }
   return false;
@@ -111,7 +126,7 @@ uint32_t JsonValue::size()
 {
   if(m_type == JsonValueType::Array)
   {
-    return std::get<JsonArray>(m_value).size();
+    return m_array->size();
   }
   return 0;
 }
@@ -120,17 +135,15 @@ JsonValue::~JsonValue()
 {
   if(m_type == JsonValueType::Object)
   {
-    for(auto kv : std::get<JsonObject>(m_value))
-    {
-      delete kv.second;
-    }
+    delete m_object;
   }
   if(m_type == JsonValueType::Array)
   {
-    for(auto v : std::get<JsonArray>(m_value))
-    {
-      delete v;
-    }
+    delete m_array;
+  }
+  if (m_type == JsonValueType::String)
+  {
+    delete m_text;
   }
 }
 
@@ -143,7 +156,7 @@ const uint32_t boolFalseStrLen = 5;
 const char* nullStr = "null";
 const uint32_t nullStrLen = 4;
 
-JsonValue* JsonParser::parse(const char* text, uint32_t textLength)
+JsonValue JsonParser::parse(const char* text, uint32_t textLength)
 {
   m_text = text;
   m_textLength = textLength;
@@ -156,7 +169,7 @@ JsonValue* JsonParser::parse(const char* text, uint32_t textLength)
   skipWhitespaces();
   if(m_position >= textLength)
   {
-    return nullptr;
+    return s_emptyObject;
   }
   return parseValue();
 }
@@ -271,22 +284,22 @@ std::string JsonParser::parseString()
       m_position += 1;
       break;
     }
-    result = result + peek();
+    result.push_back(peek());
     m_position += 1;
   }
   return result;
 }
 
-JsonValue* JsonParser::parseObject()
+JsonValue JsonParser::parseObject()
 {
 
   m_position += 1;
 
   skipWhitespaces();
 
-  JsonValue* result = new JsonValue();
-  result->m_type = JsonValueType::Object;
-  result->m_value= JsonValue::JsonObject();
+  JsonValue result;
+  result.m_type = JsonValueType::Object;
+  result.m_object = new JsonValue::JsonObject;
 
   if(peek() == '}')
   {
@@ -299,7 +312,7 @@ JsonValue* JsonParser::parseObject()
     std::string fieldName = parseString();
     if(m_error)
     {
-      return nullptr;
+      return s_emptyObject;
     }
     skipWhitespaces();
     if(peek() != ':')
@@ -308,14 +321,13 @@ JsonValue* JsonParser::parseObject()
       m_errorType = JsonParserError::ObjectColonError;
       m_errorLine = m_line;
       m_errorPosition = m_position;
-      return nullptr;
+      return s_emptyObject;
     }
     m_position += 1;
 
     skipWhitespaces();
 
-    JsonValue* fieldValue = parseValue();
-    (std::get<JsonValue::JsonObject>(result->m_value))[fieldName] = fieldValue;
+    result.m_object->emplace(fieldName, parseValue());
 
     skipWhitespaces();
     if(peek() == ',')
@@ -337,22 +349,22 @@ JsonValue* JsonParser::parseObject()
     m_errorType = JsonParserError::ObjectError;
     m_errorLine = m_line;
     m_errorPosition = m_position;
-    return nullptr;
+    return s_emptyObject;
   }
 
   //unreachable 
-  return nullptr;
+  return s_emptyObject;
 }
 
-JsonValue* JsonParser::parseArray()
+JsonValue JsonParser::parseArray()
 {
   m_position += 1;
 
   skipWhitespaces();
   
-  JsonValue* result = new JsonValue();
-  result->m_type = JsonValueType::Array;
-  result->m_value= JsonValue::JsonArray();
+  JsonValue result;
+  result.m_type = JsonValueType::Array;
+  result.m_array = new JsonValue::JsonArray;
 
   if(peek() == ']')
   {
@@ -362,8 +374,8 @@ JsonValue* JsonParser::parseArray()
   
   while(true)
   {
-    JsonValue* value = parseValue();
-    std::get<JsonValue::JsonArray>(result->m_value).push_back(value);
+    JsonValue value = parseValue();
+    result.m_array->push_back(std::move(value));
     
     skipWhitespaces();
     if(peek() == ',')
@@ -385,34 +397,34 @@ JsonValue* JsonParser::parseArray()
     m_errorType = JsonParserError::ArrayError;
     m_errorLine = m_line;
     m_errorPosition = m_position;
-    return nullptr;
+    return s_emptyObject;
   }
 
   //unreachable
-  return nullptr;
+  return s_emptyObject;
 }
 
-JsonValue* JsonParser::parseValue()
+JsonValue JsonParser::parseValue()
 {
   if(peek() == '-' || isDigit(peek()))
   {
     double number = parseNumber();
-    JsonValue* result = new JsonValue();
-    result->m_type = JsonValueType::Number;
-    result->m_value = number;
+    JsonValue result;
+    result.m_type = JsonValueType::Number;
+    result.m_number = number;
     return result;
   }
   if(peek() == '"')
   {
-    std::string str = parseString();
+    std::string* str = new std::string(parseString());
     if(m_error)
     {
-      return nullptr;
+      return s_emptyObject;
     }
 
-    JsonValue* result = new JsonValue();
-    result->m_type = JsonValueType::String;
-    result->m_value = str;
+    JsonValue result; 
+    result.m_type = JsonValueType::String;
+    result.m_text = str;
     return result;
   }
   if(peek() == '[')
@@ -428,9 +440,9 @@ JsonValue* JsonParser::parseValue()
   {
     if(consumeString(boolTrueStr, boolTrueStrLen))
     {
-      JsonValue* result = new JsonValue();
-      result->m_type = JsonValueType::Boolean;
-      result->m_value = true;
+      JsonValue result;
+      result.m_type = JsonValueType::Boolean;
+      result.m_boolean = true;
       return result;
     }
   }
@@ -439,9 +451,9 @@ JsonValue* JsonParser::parseValue()
   {
     if(consumeString(boolFalseStr, boolFalseStrLen))
     {
-      JsonValue* result = new JsonValue();
-      result->m_type = JsonValueType::Boolean;
-      result->m_value = false;
+      JsonValue result;
+      result.m_type = JsonValueType::Boolean;
+      result.m_boolean = false;
       return result;
     }
   }
@@ -450,8 +462,8 @@ JsonValue* JsonParser::parseValue()
   {
     if(consumeString(nullStr, nullStrLen))
     {
-      JsonValue* result = new JsonValue();
-      result->m_type = JsonValueType::Null;
+      JsonValue result;
+      result.m_type = JsonValueType::Null;
       return result;
     }
   }
@@ -460,7 +472,7 @@ JsonValue* JsonParser::parseValue()
   m_errorType = JsonParserError::SymbolError;
   m_errorLine = m_line;
   m_errorPosition = m_position;
-  return nullptr;
+  return s_emptyObject;
 }
 
 void JsonParser::skipWhitespaces()

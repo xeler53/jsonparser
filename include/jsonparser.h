@@ -22,9 +22,9 @@ struct JsonValue;
 class JsonValue
 {
 public:
-
-
   JsonValue(); 
+  JsonValue(JsonValue&& other);
+  JsonValue(const JsonValue& other);
 
   JsonValue& operator[](const std::string& fieldName);
   JsonValue& operator[](const char* fieldName);
@@ -43,12 +43,19 @@ public:
   ~JsonValue();
 private:
 
-  typedef std::unordered_map<std::string, JsonValue*> JsonObject;
-  typedef std::vector<JsonValue*> JsonArray;
+  typedef std::unordered_map<std::string, JsonValue> JsonObject;
+  typedef std::vector<JsonValue> JsonArray;
   
   JsonValueType m_type;
-  std::variant<double, bool, std::string, JsonArray, JsonObject> m_value;
-
+  //std::variant<double, bool, std::string, JsonArray, JsonObject> m_value;
+  union
+  {
+	  double m_number;
+	  bool m_boolean;
+	  std::string* m_text;
+	  JsonArray* m_array;
+	  JsonObject* m_object;
+  };
   friend class JsonParser;
 };
 
@@ -64,7 +71,7 @@ enum class JsonParserError
 class JsonParser
 {
 public:
-  JsonValue* parse(const char* text, uint32_t textLength);
+  JsonValue parse(const char* text, uint32_t textLength);
   bool hasError() { return m_error; };
   std::string getErrorText();
 
@@ -82,9 +89,9 @@ private:
 
   double parseNumber();
   std::string parseString();
-  JsonValue* parseObject();
-  JsonValue* parseArray();
-  JsonValue* parseValue(); 
+  JsonValue parseObject();
+  JsonValue parseArray();
+  JsonValue parseValue(); 
 
   void skipWhitespaces();
 

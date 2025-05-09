@@ -33,3 +33,4 @@ Getting size of json array:
 * Escape characters are not implemented 
 # Compilation
 This project uses premake
+On Windows just run premake5.exe file and all needed files will be generated, you can also use `--examples` flag to generate example project

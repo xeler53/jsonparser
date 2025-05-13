@@ -5,7 +5,7 @@
 
 int main(int argc, char** argv)
 {
-  const char* str = "{\"Name\" : \"John\" , \"Age\":27}"; 
+  const char* str = "{\"Name\" : \"John\" , \"Age\":27, \"points\": [10, 15, 20, 25]}"; 
   
   JsonParser parser;
   JsonValue json = parser.parse(str, strlen(str));

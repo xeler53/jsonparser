@@ -14,5 +14,7 @@ Build/
 .vs/
 *.sln
 *.vcxproj
+*.user
+*.filters
 .idea/
 *.make

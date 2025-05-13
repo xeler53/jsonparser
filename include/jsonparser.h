@@ -8,12 +8,12 @@
 
 enum class JsonValueType
 {
-  Null, 
-  Number,
-  Boolean,
-  String,
-  Array,
-  Object
+	Null, 
+	Number,
+	Boolean,
+	String,
+	Array,
+	Object
 };
 
 struct JsonValue;
@@ -22,81 +22,80 @@ struct JsonValue;
 class JsonValue
 {
 public:
-  JsonValue(); 
-  JsonValue(JsonValue&& other);
-  JsonValue(const JsonValue& other);
+	JsonValue();
+	JsonValue(JsonValue&& other);
 
-  JsonValue& operator[](const std::string& fieldName);
-  JsonValue& operator[](const char* fieldName);
-  JsonValue& operator[](int index);
+	JsonValue& operator[](const std::string& fieldName);
+	JsonValue& operator[](const char* fieldName);
+	JsonValue& operator[](int index);
 
-  operator int() const;
-  operator double() const;
-  operator bool() const;
-  operator const std::string&() const;
+	operator int() const;
+	operator double() const;
+	operator bool() const;
+	operator const std::string&() const;
 
-  bool contains(const char* fieldName);
-  bool contains(const std::string& fieldName);
+	bool contains(const char* fieldName);
+	bool contains(const std::string& fieldName);
 
-  uint32_t size();
+	uint32_t size();
 
-  ~JsonValue();
+	~JsonValue();
 private:
 
-  typedef std::unordered_map<std::string, JsonValue> JsonObject;
-  typedef std::vector<JsonValue> JsonArray;
-  
-  JsonValueType m_type;
-  //std::variant<double, bool, std::string, JsonArray, JsonObject> m_value;
-  union
-  {
-	  double m_number;
-	  bool m_boolean;
-	  std::string* m_text;
-	  JsonArray* m_array;
-	  JsonObject* m_object;
-  };
-  friend class JsonParser;
+	typedef std::unordered_map<std::string, JsonValue> JsonObject;
+	typedef std::vector<JsonValue> JsonArray;
+
+	JsonValueType m_type;
+	//std::variant<double, bool, std::string, JsonArray, JsonObject> m_value;
+	union
+	{
+		double m_number;
+		bool m_boolean;
+		std::string* m_text;
+		JsonArray* m_array;
+		JsonObject* m_object;
+	};
+	friend class JsonParser;
 };
 
 enum class JsonParserError
 {
-  ArrayError,
-  ObjectError,
-  ObjectColonError,
-  StringError,
-  SymbolError,
+	ArrayError,
+	ObjectError,
+	ObjectColonError,
+	StringError,
+	SymbolError,
 };
 
 class JsonParser
 {
 public:
-  JsonValue parse(const char* text, uint32_t textLength);
-  bool hasError() { return m_error; };
-  std::string getErrorText();
+	JsonValue parse(const char* text, uint32_t textLength);
+	bool hasError() { return m_error; };
+	std::string getErrorText();
 
 private:
-  const char* m_text;
-  uint32_t m_textLength;
+	const char* m_text;
+	uint32_t m_textLength;
 
-  uint32_t m_position;
-  uint32_t m_line;
+	uint32_t m_position;
+	uint32_t m_line;
 
-  bool m_error;
-  uint32_t m_errorLine;
-  uint32_t m_errorPosition;
-  JsonParserError m_errorType;
+	bool m_error;
+	uint32_t m_errorLine;
+	uint32_t m_errorPosition;
+	JsonParserError m_errorType;
 
-  double parseNumber();
-  std::string parseString();
-  JsonValue parseObject();
-  JsonValue parseArray();
-  JsonValue parseValue(); 
+	double parseNumber();
+	std::string parseString();
+	JsonValue parseObject();
+	JsonValue parseArray();
+	JsonValue parseValue(); 
 
-  void skipWhitespaces();
+	void skipWhitespaces();
 
-  char peek();
-  bool isDigit(char c);
-  bool consumeString(const char* str, uint32_t length);
+	char peek();
+	bool isDigit(char c);
+	bool consumeString(const char* str, uint32_t length);
 };
 

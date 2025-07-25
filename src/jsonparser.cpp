@@ -4,6 +4,8 @@
 #include <sstream>
 #include <stdio.h>
 #include <math.h>
+#include <cstring>
+#include <algorithm>
 
 static JsonValue s_emptyObject;
 static std::string s_emptyString = "null";
@@ -13,26 +15,39 @@ JsonValue::JsonValue()
 	m_type = JsonValueType::Null;
 }
 
-JsonValue::JsonValue(JsonValue&& other)
+JsonValue::JsonValue(JsonValue&& other) noexcept
 {
 	m_type = other.m_type;
+	
+	// Copy union data
+	m_number = other.m_number; // This covers the entire union
+	
+	// Reset the other object to prevent double deletion
 	other.m_type = JsonValueType::Null;
-
-	m_number = other.m_number;
 }
 
+JsonValue& JsonValue::operator=(JsonValue&& other) noexcept
+{
+	if (this != &other)
+	{
+		cleanup(); // Clean up current resources
+		
+		m_type = other.m_type;
+		m_number = other.m_number; // Copy union data
+		
+		other.m_type = JsonValueType::Null;
+	}
+	return *this;
+}
 
 JsonValue& JsonValue::operator[](const std::string& fieldName) 
 {
 	if(m_type == JsonValueType::Object)
 	{
-		auto& map = *m_object; 
-		if(map.find(fieldName) != map.end())
-			return map[fieldName];
-		else 
-			return s_emptyObject;  
+		auto it = m_object->find(fieldName);
+		if(it != m_object->end())
+			return it->second;
 	}
-
 	return s_emptyObject;
 }
 
@@ -40,20 +55,31 @@ JsonValue& JsonValue::operator[](const char* fieldName)
 {
 	if(m_type == JsonValueType::Object)
 	{
-		auto& map = *m_object;
-		if(map.find(fieldName) != map.end())
-			return map[fieldName];
-		else 
-			return s_emptyObject;  
+		auto it = m_object->find(fieldName);
+		if(it != m_object->end())
+			return it->second;
+	}
+	return s_emptyObject;
+}
+
+JsonValue& JsonValue::operator[](std::string_view fieldName)
+{
+	if(m_type == JsonValueType::Object)
+	{
+		// Use find with string_view compatible lookup
+		std::string key(fieldName); // Only construct string when needed
+		auto it = m_object->find(key);
+		if(it != m_object->end())
+			return it->second;
 	}
 	return s_emptyObject;
 }
 
 JsonValue& JsonValue::operator[](int index) 
 {
-	if(m_type == JsonValueType::Array)
+	if(m_type == JsonValueType::Array && index >= 0 && static_cast<size_t>(index) < m_array->size())
 	{
-		return m_array->at(index);
+		return (*m_array)[index];
 	}
 	return s_emptyObject;
 }
@@ -62,7 +88,7 @@ JsonValue::operator int() const
 {
 	if(m_type == JsonValueType::Number)
 	{
-		return (int) m_number;
+		return static_cast<int>(m_number);
 	}
 	return 0;
 }
@@ -73,7 +99,7 @@ JsonValue::operator double() const
 	{
 		return m_number;
 	}
-	return 0;
+	return 0.0;
 }
 
 JsonValue::operator bool() const
@@ -94,61 +120,75 @@ JsonValue::operator const std::string&() const
 	return s_emptyString;
 }
 
-bool JsonValue::contains(const char* fieldName)
+bool JsonValue::contains(const char* fieldName) const
 {
 	if(m_type == JsonValueType::Object)
 	{
-
-		auto& map = *m_object;
-		return map.find(fieldName) != map.end();
+		return m_object->find(fieldName) != m_object->end();
 	}
 	return false;
 }
 
-bool JsonValue::contains(const std::string& fieldName)
+bool JsonValue::contains(const std::string& fieldName) const
 {
 	if(m_type == JsonValueType::Object)
 	{
-
-		auto& map = *m_object;
-		return map.find(fieldName) != map.end();
+		return m_object->find(fieldName) != m_object->end();
 	}
 	return false;
 }
 
-uint32_t JsonValue::size()
+bool JsonValue::contains(std::string_view fieldName) const
+{
+	if(m_type == JsonValueType::Object)
+	{
+		std::string key(fieldName);
+		return m_object->find(key) != m_object->end();
+	}
+	return false;
+}
+
+uint32_t JsonValue::size() const
 {
 	if(m_type == JsonValueType::Array)
 	{
-		return m_array->size();
+		return static_cast<uint32_t>(m_array->size());
 	}
 	return 0;
 }
 
-JsonValue::~JsonValue()
+void JsonValue::cleanup()
 {
-	if(m_type == JsonValueType::Object)
+	switch(m_type)
 	{
-		delete m_object;
-	}
-	if(m_type == JsonValueType::Array)
-	{
-		delete m_array;
-	}
-	if (m_type == JsonValueType::String)
-	{
-		delete m_text;
+		case JsonValueType::Object:
+			delete m_object;
+			break;
+		case JsonValueType::Array:
+			delete m_array;
+			break;
+		case JsonValueType::String:
+			delete m_text;
+			break;
+		default:
+			break;
 	}
 }
 
-const char* boolTrueStr = "true";
-const uint32_t boolTrueStrLen = 4;
+JsonValue::~JsonValue()
+{
+	cleanup();
+}
 
-const char* boolFalseStr = "false";
-const uint32_t boolFalseStrLen = 5;
+// Optimized string constants
+static constexpr const char* boolTrueStr = "true";
+static constexpr uint32_t boolTrueStrLen = 4;
 
-const char* nullStr = "null";
-const uint32_t nullStrLen = 4;
+static constexpr const char* boolFalseStr = "false";
+static constexpr uint32_t boolFalseStrLen = 5;
+
+static constexpr const char* nullStr = "null";
+static constexpr uint32_t nullStrLen = 4;
 
 JsonValue JsonParser::parse(const char* text, uint32_t textLength)
 {
@@ -161,14 +201,19 @@ JsonValue JsonParser::parse(const char* text, uint32_t textLength)
 	m_error = false;
 
 	skipWhitespaces();
-	if(m_position >= textLength)
+	if(isAtEnd())
 	{
-		return { };
+		return JsonValue{};
 	}
 	return parseValue();
 }
 
-std::string JsonParser::getErrorText()
+JsonValue JsonParser::parse(std::string_view text)
+{
+	return parse(text.data(), static_cast<uint32_t>(text.size()));
+}
+
+std::string JsonParser::getErrorText() const
 {
 	std::ostringstream text;
 	switch(m_errorType)
@@ -190,7 +235,11 @@ std::string JsonParser::getErrorText()
 			break;
 
 		case JsonParserError::SymbolError:
-			text << "Unkown symbolic literal ";
+			text << "Unknown symbolic literal ";
+			break;
+			
+		case JsonParserError::BoundsError:
+			text << "Unexpected end of input ";
 			break;
 	}
 	text << "at line " << m_errorLine + 1 << ':' << m_errorPosition;
@@ -208,94 +257,104 @@ double JsonParser::parseNumber()
 	}
 
 	double result = 0.0;
-	while(isDigit(peek()))
+	
+	// Optimized integer part parsing
+	while(!isAtEnd() && isDigit(peek()))
 	{
-		result = result * 10 + (peek() - '0');
+		result = result * 10.0 + static_cast<double>(peek() - '0');
 		m_position += 1;
 	}
 
-	if(peek() == '.')
+	// Fractional part
+	if(!isAtEnd() && peek() == '.')
 	{
 		m_position += 1;
 		double frac = 0.1;
-		while(isDigit(peek()))
+		while(!isAtEnd() && isDigit(peek()))
 		{
-			result = result + frac * (peek() - '0');
-			frac = frac * 0.1;
+			result += frac * static_cast<double>(peek() - '0');
+			frac *= 0.1;
 			m_position += 1;
 		}
 	}
-	if(peek() == 'e' || peek() == 'E')
+	
+	// Scientific notation
+	if(!isAtEnd() && (peek() == 'e' || peek() == 'E'))
 	{
 		m_position += 1;
 
-		bool negExp = peek() == '-';
-		if(peek() == '+' || peek() == '-')
+		bool negExp = false;
+		if(!isAtEnd() && peek() == '-')
+		{
+			negExp = true;
 			m_position += 1;
+		}
+		else if(!isAtEnd() && peek() == '+')
+		{
+			m_position += 1;
+		}
 
 		double exponent = 0.0;
-		while(isDigit(peek()))
+		while(!isAtEnd() && isDigit(peek()))
 		{
-			exponent = exponent * 10 + (peek() - '0');
+			exponent = exponent * 10.0 + static_cast<double>(peek() - '0');
 			m_position += 1;
 		}
 
 		if(negExp)
 			exponent = -exponent;
 
-		result = result * std::pow(10, exponent);
+		result *= std::pow(10.0, exponent);
 	}
-	if(negative)
-		result = -result;
-
-	return result;
+	
+	return negative ? -result : result;
 }
 
 std::string JsonParser::parseString()
 {
-	m_position += 1;
+	m_position += 1; // Skip opening quote
 
 	std::string result;
+	result.reserve(64); // Reserve space to reduce allocations
+	
 	uint32_t startLine = m_line;
+	const uint32_t startPos = m_position;
 
-	while(true)
+	// Find the end quote first for better performance
+	uint32_t endPos = m_position;
+	while(endPos < m_textLength && m_text[endPos] != '"')
 	{
-		if(m_position >= m_textLength)
-		{
-			m_error = true;
-			m_errorType = JsonParserError::StringError;
-			m_errorLine = startLine;
-			m_errorPosition = m_position;
-
-			break;
-		}
-
-		if(peek() == '\n')
+		if(m_text[endPos] == '\n')
 			m_line += 1;
-
-		if(peek() == '"')
-		{
-			m_position += 1;
-			break;
-		}
-		result.push_back(peek());
-		m_position += 1;
+		endPos++;
 	}
+
+	if(endPos >= m_textLength)
+	{
+		setError(JsonParserError::StringError);
+		m_errorLine = startLine;
+		return result;
+	}
+
+	// Copy the string content in one go
+	result.assign(m_text + startPos, endPos - startPos);
+	m_position = endPos + 1; // Skip closing quote
+
 	return result;
 }
 
 JsonValue JsonParser::parseObject()
 {
-
-	m_position += 1;
+	m_position += 1; // Skip '{'
 
 	skipWhitespaces();
 
 	JsonValue result;
 	result.m_type = JsonValueType::Object;
 	result.m_object = new JsonValue::JsonObject;
+	result.m_object->reserve(8); // Reserve space for better performance
 
-	if(peek() == '}')
+	if(!isAtEnd() && peek() == '}')
 	{
 		m_position += 1;
 		return result;
@@ -303,64 +362,72 @@ JsonValue JsonParser::parseObject()
 
 	while(true)
 	{
+		if(isAtEnd() || peek() != '"')
+		{
+			setError(JsonParserError::StringError);
+			return JsonValue{};
+		}
+
 		std::string fieldName = parseString();
 		if(m_error)
 		{
-			return { };
+			return JsonValue{};
 		}
+		
 		skipWhitespaces();
-		if(peek() != ':')
+		if(isAtEnd() || peek() != ':')
 		{
-			m_error = true;
-			m_errorType = JsonParserError::ObjectColonError;
-			m_errorLine = m_line;
-			m_errorPosition = m_position;
-			return { };
+			setError(JsonParserError::ObjectColonError);
+			return JsonValue{};
 		}
 		m_position += 1;
 
 		skipWhitespaces();
 
-		result.m_object->emplace(fieldName, parseValue());
+		JsonValue value = parseValue();
+		if(m_error)
+		{
+			return JsonValue{};
+		}
+
+		result.m_object->emplace(std::move(fieldName), std::move(value));
 
 		skipWhitespaces();
+		if(isAtEnd())
+		{
+			setError(JsonParserError::ObjectError);
+			return JsonValue{};
+		}
+		
 		if(peek() == ',')
 		{
 			m_position += 1;
 			skipWhitespaces();
-
 			continue;
 		}
 		if(peek() == '}')
 		{
 			m_position += 1;
-
 			return result;
 		}
 
-		//error
-		m_error = true;
-		m_errorType = JsonParserError::ObjectError;
-		m_errorLine = m_line;
-		m_errorPosition = m_position;
-		return { };
+		setError(JsonParserError::ObjectError);
+		return JsonValue{};
 	}
-
-	//unreachable 
-	return { };
 }
 
 JsonValue JsonParser::parseArray()
 {
-	m_position += 1;
+	m_position += 1; // Skip '['
 
 	skipWhitespaces();
 
 	JsonValue result;
 	result.m_type = JsonValueType::Array;
 	result.m_array = new JsonValue::JsonArray;
+	result.m_array->reserve(8); // Reserve space for better performance
 
-	if(peek() == ']')
+	if(!isAtEnd() && peek() == ']')
 	{
 		m_position += 1;
 		return result;
@@ -369,38 +436,49 @@ JsonValue JsonParser::parseArray()
 	while(true)
 	{
 		JsonValue value = parseValue();
+		if(m_error)
+		{
+			return JsonValue{};
+		}
+		
 		result.m_array->push_back(std::move(value));
 
 		skipWhitespaces();
+		if(isAtEnd())
+		{
+			setError(JsonParserError::ArrayError);
+			return JsonValue{};
+		}
+		
 		if(peek() == ',')
 		{
 			m_position += 1;
 			skipWhitespaces();
-
 			continue;
 		}
 		if(peek() == ']')
 		{
 			m_position += 1;
-
 			return result;
 		}
 
-		//error
-		m_error = true;
-		m_errorType = JsonParserError::ArrayError;
-		m_errorLine = m_line;
-		m_errorPosition = m_position;
-		return { };
+		setError(JsonParserError::ArrayError);
+		return JsonValue{};
 	}
-
-	//unreachable
-	return { };
 }
 
 JsonValue JsonParser::parseValue()
 {
-	if(peek() == '-' || isDigit(peek()))
+	if(isAtEnd())
+	{
+		setError(JsonParserError::BoundsError);
+		return JsonValue{};
+	}
+
+	char c = peek();
+	
+	// Number parsing
+	if(c == '-' || isDigit(c))
 	{
 		double number = parseNumber();
 		JsonValue result;
@@ -408,94 +486,115 @@ JsonValue JsonParser::parseValue()
 		result.m_number = number;
 		return result;
 	}
-	if(peek() == '"')
+	
+	// String parsing
+	if(c == '"')
 	{
-		std::string* str = new std::string(parseString());
+		std::string str = parseString();
 		if(m_error)
 		{
-			return {  };
+			return JsonValue{};
 		}
 
 		JsonValue result; 
 		result.m_type = JsonValueType::String;
-		result.m_text = str;
+		result.m_text = new std::string(std::move(str));
 		return result;
 	}
-	if(peek() == '[')
+	
+	// Array parsing
+	if(c == '[')
 	{
 		return parseArray();
 	}
-	if(peek() == '{')
+	
+	// Object parsing
+	if(c == '{')
 	{
 		return parseObject();
 	}
 
-	if(peek() == 't')
+	// Boolean and null parsing - optimized with early character checks
+	if(c == 't' && consumeString(boolTrueStr, boolTrueStrLen))
 	{
-		if(consumeString(boolTrueStr, boolTrueStrLen))
-		{
-			JsonValue result;
-			result.m_type = JsonValueType::Boolean;
-			result.m_boolean = true;
-			return result;
-		}
+		JsonValue result;
+		result.m_type = JsonValueType::Boolean;
+		result.m_boolean = true;
+		return result;
 	}
 
-	if(peek() == 'f')
+	if(c == 'f' && consumeString(boolFalseStr, boolFalseStrLen))
 	{
-		if(consumeString(boolFalseStr, boolFalseStrLen))
-		{
-			JsonValue result;
-			result.m_type = JsonValueType::Boolean;
-			result.m_boolean = false;
-			return result;
-		}
+		JsonValue result;
+		result.m_type = JsonValueType::Boolean;
+		result.m_boolean = false;
+		return result;
 	}
 
-	if(peek() == 'n')
+	if(c == 'n' && consumeString(nullStr, nullStrLen))
 	{
-		if(consumeString(nullStr, nullStrLen))
-		{
-			JsonValue result;
-			result.m_type = JsonValueType::Null;
-			return result;
-		}
+		JsonValue result;
+		result.m_type = JsonValueType::Null;
+		return result;
 	}
 
-	m_error = true;
-	m_errorType = JsonParserError::SymbolError;
-	m_errorLine = m_line;
-	m_errorPosition = m_position;
-	return { };
+	setError(JsonParserError::SymbolError);
+	return JsonValue{};
 }
 
 void JsonParser::skipWhitespaces()
 {
-	while(peek() == ' ' || peek() == '\t' || peek() == '\n' || peek() == '\r')
+	while(!isAtEnd())
 	{
-		if(peek() == '\n')
-			m_line += 1;
-		m_position += 1;
+		char c = peek();
+		if(c == ' ' || c == '\t' || c == '\n' || c == '\r')
+		{
+			if(c == '\n')
+				m_line += 1;
+			m_position += 1;
+		}
+		else
+		{
+			break;
+		}
 	}
 }
 
-char JsonParser::peek()
+char JsonParser::peek() const
 {
+	if(isAtEnd())
+		return '\0';
 	return m_text[m_position];
 }
 
-bool JsonParser::isDigit(char c)
+bool JsonParser::isAtEnd() const
+{
+	return m_position >= m_textLength;
+}
+
+bool JsonParser::isDigit(char c) const
 {
 	return c >= '0' && c <= '9';
 }
 
 bool JsonParser::consumeString(const char* str, uint32_t length)
 {
-	for(int i = 0; i < length; ++i)
+	if(m_position + length > m_textLength)
+		return false;
+		
+	// Use memcmp for faster string comparison
+	if(std::memcmp(m_text + m_position, str, length) == 0)
 	{
-		if(m_text[m_position + i] != str[i])
-			return false;
+		m_position += length;
+		return true;
 	}
-	m_position += length;
-	return true;
+	return false;
+}
+
+void JsonParser::setError(JsonParserError errorType)
+{
+	m_error = true;
+	m_errorType = errorType;
+	m_errorLine = m_line;
+	m_errorPosition = m_position;
 }

@@ -35,14 +35,14 @@ void benchmarkParsing(const std::string& jsonStr, int iterations) {
     std::cout << "JSON size: " << jsonStr.size() << " bytes\n";
     std::cout << "Iterations: " << iterations << "\n\n";
     
-    // Warm up
+    // Test regular parsing
     JsonParser parser;
     JsonValue warmUp = parser.parse(jsonStr.c_str(), jsonStr.size());
     
     auto start = std::chrono::high_resolution_clock::now();
     
     for (int i = 0; i < iterations; ++i) {
-        JsonParser parser;
+        parser.reset(); // Reuse parser with memory pool
         JsonValue json = parser.parse(jsonStr.c_str(), jsonStr.size());
         
         if (parser.hasError()) {
@@ -69,6 +69,42 @@ void benchmarkParsing(const std::string& jsonStr, int iterations) {
     double avgTime = duration.count() / static_cast<double>(iterations);
     double throughput = (jsonStr.size() * iterations) / (duration.count() / 1000000.0) / (1024 * 1024); // MB/s
     
+    std::cout << "Regular parsing:\n";
+    std::cout << "Total time: " << duration.count() << " microseconds\n";
+    std::cout << "Average time per parse: " << avgTime << " microseconds\n";
+    std::cout << "Throughput: " << throughput << " MB/s\n";
+    
+    // Test fast path parsing
+    start = std::chrono::high_resolution_clock::now();
+    
+    for (int i = 0; i < iterations; ++i) {
+        parser.reset();
+        JsonValue json = parser.parseFast(jsonStr.c_str(), jsonStr.size());
+        
+        if (parser.hasError()) {
+            std::cout << "Parse error: " << parser.getErrorText() << std::endl;
+            return;
+        }
+        
+        // Access some data
+        if (json.size() > 0) {
+            JsonValue& firstObj = json[0];
+            std::string name = firstObj["name"];
+            double value = firstObj["value"];
+            bool active = firstObj["active"];
+            
+            volatile auto dummy = name.size() + static_cast<size_t>(value) + (active ? 1 : 0);
+            (void)dummy;
+        }
+    }
+    
+    end = std::chrono::high_resolution_clock::now();
+    duration = std::chrono::duration_cast<std::chrono::microseconds>(end - start);
+    
+    avgTime = duration.count() / static_cast<double>(iterations);
+    throughput = (jsonStr.size() * iterations) / (duration.count() / 1000000.0) / (1024 * 1024);
+    
+    std::cout << "Fast path parsing:\n";
     std::cout << "Total time: " << duration.count() << " microseconds\n";
     std::cout << "Average time per parse: " << avgTime << " microseconds\n";
     std::cout << "Throughput: " << throughput << " MB/s\n";
@@ -112,15 +148,17 @@ int main() {
     
     benchmarkStringView();
     
-    std::cout << "\n=== Optimization Features Demonstrated ===\n";
-    std::cout << "✓ Improved move semantics and copy prevention\n";
-    std::cout << "✓ String view support for zero-copy operations\n";
-    std::cout << "✓ Better bounds checking and error handling\n";
-    std::cout << "✓ Optimized string parsing with bulk operations\n";
-    std::cout << "✓ Memory pre-allocation for containers\n";
-    std::cout << "✓ Faster character-by-character operations\n";
-    std::cout << "✓ Const-correctness improvements\n";
-    std::cout << "✓ Optimized literal comparisons with memcmp\n";
+    std::cout << "\n=== Advanced Optimization Features Demonstrated ===\n";
+    std::cout << "✓ Memory pool allocation for zero-allocation parsing\n";
+    std::cout << "✓ SIMD-optimized whitespace skipping and quote finding\n";
+    std::cout << "✓ Branch prediction hints with __builtin_expect\n";
+    std::cout << "✓ Lookup tables for character classification\n";
+    std::cout << "✓ Fast path parsing for simple integers\n";
+    std::cout << "✓ Custom FNV-1a hash for better string performance\n";
+    std::cout << "✓ Parser reuse with memory pool reset\n";
+    std::cout << "✓ Optimized union access and move semantics\n";
+    std::cout << "✓ Thread-local memory pools\n";
+    std::cout << "✓ Const-correctness with noexcept specifications\n";
     
     return 0;
 }

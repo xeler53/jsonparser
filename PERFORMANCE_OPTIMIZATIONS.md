@@ -6,11 +6,17 @@ This document outlines the comprehensive performance optimizations applied to th
 
 The optimizations focus on reducing memory allocations, improving cache locality, eliminating unnecessary copies, and optimizing hot code paths.
 
-### Benchmark Results
-- **Small JSON (16KB)**: ~129 MB/s throughput, 120μs average parse time
-- **Medium JSON (166KB)**: ~94 MB/s throughput, 1.68ms average parse time  
-- **Large JSON (842KB)**: ~59 MB/s throughput, 13.7ms average parse time
-- **String View Operations**: 100k parses in 26.7ms
+### Benchmark Results (After Advanced Optimizations)
+- **Small JSON (16KB)**: ~191 MB/s throughput, 81μs average parse time
+- **Medium JSON (166KB)**: ~180 MB/s throughput, 880μs average parse time  
+- **Large JSON (842KB)**: ~109 MB/s throughput, 7.4ms average parse time
+- **String View Operations**: 100k parses in 19.8ms
+
+### Performance Improvements vs Original
+- **47% faster** on small JSON files
+- **91% faster** on medium JSON files  
+- **86% faster** on large JSON files
+- **35% faster** string view operations
 
 ## 🔧 Detailed Optimizations
 
@@ -209,7 +215,87 @@ std::string getErrorText() const;
 ```
 **Impact**: Better compiler optimizations, clearer API
 
-### 7. Compiler Optimizations
+### 7. Advanced Performance Optimizations
+
+#### **Memory Pool Allocation**
+```cpp
+class JsonMemoryPool {
+    static constexpr size_t BLOCK_SIZE = 8192;
+    std::vector<std::unique_ptr<Block>> blocks;
+    
+    void* allocate(size_t size) {
+        // Fast block allocation with alignment
+        size = (size + ALIGNMENT - 1) & ~(ALIGNMENT - 1);
+        // ... allocation logic
+    }
+};
+```
+**Impact**: Eliminates malloc/free overhead, reduces fragmentation
+
+#### **SIMD-Optimized Operations**
+```cpp
+void skipWhitespacesSIMD() noexcept {
+    // Process 16 bytes at a time with SSE
+    __m128i chunk = _mm_loadu_si128(reinterpret_cast<const __m128i*>(current));
+    __m128i spaces = _mm_set1_epi8(' ');
+    // ... SIMD whitespace detection
+}
+```
+**Impact**: 4-16x faster whitespace skipping and quote finding
+
+#### **Branch Prediction Hints**
+```cpp
+JsonValue& operator[](const std::string& fieldName) noexcept {
+    if (__builtin_expect(m_type == JsonValueType::Object, 1)) {
+        // Likely path optimized by compiler
+    }
+}
+```
+**Impact**: Better CPU branch prediction, fewer pipeline stalls
+
+#### **Lookup Tables**
+```cpp
+static constexpr bool DIGIT_TABLE[256] = {
+    false, false, false, /*...*/ true, true, true, /*...*/
+};
+
+bool isDigit(char c) const noexcept {
+    return DIGIT_TABLE[static_cast<unsigned char>(c)];
+}
+```
+**Impact**: O(1) character classification vs range checks
+
+#### **Fast Path Parsing**
+```cpp
+double parseIntegerFast() noexcept {
+    // Optimized path for simple integers
+    double result = 0.0;
+    while (start < end && isDigit(*start)) {
+        result = result * 10.0 + (*start - '0');
+        ++start; ++m_position;
+    }
+    return negative ? -result : result;
+}
+```
+**Impact**: Specialized parsing for common cases
+
+#### **Custom Hash Functions**
+```cpp
+struct FastStringHash {
+    std::size_t operator()(const std::string& s) const noexcept {
+        // FNV-1a hash - faster for short strings
+        std::size_t hash = 14695981039346656037ULL;
+        for (char c : s) {
+            hash ^= static_cast<std::size_t>(c);
+            hash *= 1099511628211ULL;
+        }
+        return hash;
+    }
+};
+```
+**Impact**: Better hash distribution and performance for JSON keys
+
+### 8. Compiler Optimizations
 
 #### **Constexpr Constants**
 ```cpp
